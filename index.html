@@ -39,10 +39,10 @@
   </style>
 </head>
 <body>
-  <h1>🟢 Kahoot Bot Spawner (Improved)</h1>
+  <h1>🟢 Kahoot Bot Spawner (Fixed 2026)</h1>
   
   <input type="text" id="pin" placeholder="Enter Kahoot PIN" maxlength="6">
-  <input type="number" id="count" placeholder="Number of bots" value="5" min="1" max="50">
+  <input type="number" id="count" placeholder="Number of bots" value="5" min="1" max="30">
   <br>
   <button onclick="startBots()">Spawn Bots</button>
   <button onclick="stopBots()">Stop All Bots</button>
@@ -60,33 +60,39 @@
     }
 
     function generateName() {
-      const names = ["Bot", "Player", "Noob", "KahootKing", "xXBot", "Random", "Guest"];
+      const names = ["Bot", "Player", "Noob", "Kahoot", "Pro", "Legend", "Random"];
       return names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 9999);
     }
 
     async function getSessionToken(pin) {
       try {
-        const res = await fetch(`https://kahoot.it/reserve/session/${pin}/?${Date.now()}`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        return data.token || null;
+        const url = `https://kahoot.it/reserve/session/${pin}/?${Date.now()}`;
+        const res = await fetch(url, { method: 'GET' });
+
+        if (!res.ok) return null;
+
+        const token = res.headers.get('x-kahoot-session-token');
+        if (token) {
+          log(`✅ Got session token for PIN ${pin}`);
+          return token;
+        }
+        return null;
       } catch (e) {
+        log(`❌ Failed to get token: ${e.message}`);
         return null;
       }
     }
 
     function createBot(pin, id) {
-      const name = generateName();
-      
       getSessionToken(pin).then(token => {
         if (!token) {
           log(`<span style="color:red">[Bot ${id}] Failed to get session token</span>`);
           return;
         }
 
-        const ws = new WebSocket(`wss://kahoot.it/cometd/${pin}/${token}`);
+        const name = generateName();
+        const wsUrl = `wss://kahoot.it/cometd/${pin}/${token}`;
+        const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
           log(`<span style="color:cyan">[Bot ${id}]</span> Connected as <b>${name}</b>`);
@@ -104,9 +110,9 @@
           try {
             const messages = JSON.parse(event.data);
             if (Array.isArray(messages)) {
-              messages.forEach(msg => {
+              for (let msg of messages) {
                 if (msg.channel === "/meta/handshake" && msg.successful) {
-                  // Join game
+                  // Join the game
                   ws.send(JSON.stringify([{
                     "channel": "/service/controller",
                     "data": {
@@ -116,8 +122,9 @@
                     },
                     "id": "2"
                   }]));
+                  log(`<span style="color:lime">[Bot ${id}]</span> Joined game!`);
                 }
-              });
+              }
             }
           } catch(e) {}
         };
@@ -125,7 +132,7 @@
         ws.onerror = () => log(`<span style="color:red">[Bot ${id}] Connection error</span>`);
         ws.onclose = () => log(`<span style="color:orange">[Bot ${id}] Disconnected</span>`);
 
-        return ws;
+        bots.push(ws);
       });
     }
 
@@ -133,7 +140,7 @@
       if (running) return;
       
       const pin = document.getElementById('pin').value.trim();
-      let count = parseInt(document.getElementById('count').value);
+      let count = parseInt(document.getElementById('count').value) || 5;
 
       if (!pin || pin.length !== 6) {
         alert("Please enter a valid 6-digit PIN!");
@@ -142,25 +149,18 @@
 
       running = true;
       bots = [];
-      document.getElementById('log').innerHTML = `Spawning ${count} bots for PIN: ${pin}...\n\n`;
-
-      count = Math.min(count, 30); // Limit to reduce detection
+      document.getElementById('log').innerHTML = `🚀 Spawning ${count} bots for PIN: ${pin}...\n\n`;
 
       for (let i = 0; i < count; i++) {
         setTimeout(() => {
-          if (running) {
-            const bot = createBot(pin, i + 1);
-            bots.push(bot);
-          }
-        }, i * 600); // Increased delay
+          if (running) createBot(pin, i + 1);
+        }, i * 700); // Delay to avoid rate limiting
       }
     }
 
     function stopBots() {
       running = false;
-      bots.forEach(bot => {
-        if (bot && bot.close) bot.close();
-      });
+      bots.forEach(bot => bot?.close());
       bots = [];
       log("🛑 All bots stopped.");
     }
