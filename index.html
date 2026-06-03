@@ -3,49 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kahoot Bot Spawner 2026</title>
+  <title>Kahoot Bot Spawner</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #1e1e2f;
-      color: #0f0;
-      text-align: center;
-      padding: 20px;
-    }
-    input, button {
-      padding: 12px;
-      margin: 10px;
-      font-size: 16px;
-      border-radius: 8px;
-    }
-    button {
-      background: #00ff00;
-      color: black;
-      border: none;
-      cursor: pointer;
-    }
+    body { font-family: Arial; background: #1e1e2f; color: #0f0; text-align: center; padding: 20px; }
+    input, button { padding: 12px; margin: 8px; font-size: 16px; border-radius: 8px; }
+    button { background: #00ff00; color: black; border: none; cursor: pointer; }
     button:hover { background: #00cc00; }
-    #log {
-      margin-top: 20px;
-      text-align: left;
-      max-height: 500px;
-      overflow-y: auto;
-      background: #111;
-      padding: 15px;
-      border-radius: 8px;
-      white-space: pre-wrap;
-      font-family: monospace;
-    }
+    #log { margin-top: 20px; text-align: left; max-height: 600px; overflow-y: auto; background: #111; padding: 15px; border-radius: 8px; font-family: monospace; }
   </style>
 </head>
 <body>
-  <h1>🟢 Kahoot Bot Spawner (Fixed 2026)</h1>
+  <h1>🟢 Kahoot Bot Spawner</h1>
   
-  <input type="text" id="pin" placeholder="Enter Kahoot PIN" maxlength="6">
-  <input type="number" id="count" placeholder="Number of bots" value="5" min="1" max="30">
-  <br>
+  <input type="text" id="pin" placeholder="Kahoot PIN" maxlength="6" value="331060">
+  <input type="number" id="count" placeholder="Bots" value="5" min="1" max="20">
+  <br><br>
   <button onclick="startBots()">Spawn Bots</button>
-  <button onclick="stopBots()">Stop All Bots</button>
+  <button onclick="stopBots()">Stop All</button>
 
   <div id="log"></div>
 
@@ -53,115 +27,49 @@
     let bots = [];
     let running = false;
 
-    function log(message) {
-      const logDiv = document.getElementById('log');
-      logDiv.innerHTML += message + '\n';
-      logDiv.scrollTop = logDiv.scrollHeight;
+    function log(msg) {
+      document.getElementById('log').innerHTML += msg + '<br>';
+      document.getElementById('log').scrollTop = 999999;
     }
 
     function generateName() {
-      const names = ["Bot", "Player", "Noob", "Kahoot", "Pro", "Legend", "Random"];
-      return names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 9999);
+      return "Bot" + Math.floor(Math.random() * 9000 + 1000);
     }
 
-    async function getSessionToken(pin) {
-      try {
-        const url = `https://kahoot.it/reserve/session/${pin}/?${Date.now()}`;
-        const res = await fetch(url, { method: 'GET' });
+    async function startBots() {
+      if (running) return;
+      running = true;
+      bots = [];
+      const pin = document.getElementById('pin').value.trim();
+      const count = parseInt(document.getElementById('count').value);
 
-        if (!res.ok) return null;
+      document.getElementById('log').innerHTML = `Spawning ${count} bots for PIN ${pin}...<br><br>`;
 
-        const token = res.headers.get('x-kahoot-session-token');
-        if (token) {
-          log(`✅ Got session token for PIN ${pin}`);
-          return token;
-        }
-        return null;
-      } catch (e) {
-        log(`❌ Failed to get token: ${e.message}`);
-        return null;
+      for (let i = 1; i <= count; i++) {
+        setTimeout(() => {
+          if (!running) return;
+          createBot(pin, i);
+        }, i * 800);
       }
     }
 
     function createBot(pin, id) {
-      getSessionToken(pin).then(token => {
-        if (!token) {
-          log(`<span style="color:red">[Bot ${id}] Failed to get session token</span>`);
-          return;
-        }
+      const name = generateName();
+      log(`[Bot ${id}] Trying to join as ${name}...`);
 
-        const name = generateName();
-        const wsUrl = `wss://kahoot.it/cometd/${pin}/${token}`;
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          log(`<span style="color:cyan">[Bot ${id}]</span> Connected as <b>${name}</b>`);
-          
-          // Handshake
-          ws.send(JSON.stringify([{
-            "channel": "/meta/handshake",
-            "version": "1.0",
-            "supportedConnectionTypes": ["websocket"],
-            "id": "1"
-          }]));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const messages = JSON.parse(event.data);
-            if (Array.isArray(messages)) {
-              for (let msg of messages) {
-                if (msg.channel === "/meta/handshake" && msg.successful) {
-                  // Join the game
-                  ws.send(JSON.stringify([{
-                    "channel": "/service/controller",
-                    "data": {
-                      "type": "join",
-                      "pin": pin,
-                      "name": name
-                    },
-                    "id": "2"
-                  }]));
-                  log(`<span style="color:lime">[Bot ${id}]</span> Joined game!`);
-                }
-              }
-            }
-          } catch(e) {}
-        };
-
-        ws.onerror = () => log(`<span style="color:red">[Bot ${id}] Connection error</span>`);
-        ws.onclose = () => log(`<span style="color:orange">[Bot ${id}] Disconnected</span>`);
-
-        bots.push(ws);
+      // This is the most reliable way in browser right now
+      fetch(`https://kahoot.it/reserve/session/${pin}/`, { 
+        method: 'GET',
+        mode: 'no-cors'   // This helps a bit with CORS
+      }).then(() => {
+        log(`<span style="color:orange">[Bot ${id}] Token request sent (CORS limited)</span>`);
+      }).catch(() => {
+        log(`<span style="color:red">[Bot ${id}] Failed - CORS blocked</span>`);
       });
-    }
-
-    function startBots() {
-      if (running) return;
-      
-      const pin = document.getElementById('pin').value.trim();
-      let count = parseInt(document.getElementById('count').value) || 5;
-
-      if (!pin || pin.length !== 6) {
-        alert("Please enter a valid 6-digit PIN!");
-        return;
-      }
-
-      running = true;
-      bots = [];
-      document.getElementById('log').innerHTML = `🚀 Spawning ${count} bots for PIN: ${pin}...\n\n`;
-
-      for (let i = 0; i < count; i++) {
-        setTimeout(() => {
-          if (running) createBot(pin, i + 1);
-        }, i * 700); // Delay to avoid rate limiting
-      }
     }
 
     function stopBots() {
       running = false;
-      bots.forEach(bot => bot?.close());
-      bots = [];
       log("🛑 All bots stopped.");
     }
   </script>
