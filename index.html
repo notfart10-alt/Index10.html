@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kahoot Bot Spawner</title>
+  <title>Kahoot Bot Spawner 2026</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -28,24 +28,24 @@
     #log {
       margin-top: 20px;
       text-align: left;
-      max-height: 400px;
+      max-height: 500px;
       overflow-y: auto;
       background: #111;
       padding: 15px;
       border-radius: 8px;
       white-space: pre-wrap;
+      font-family: monospace;
     }
-    .bot { color: #00ffcc; }
   </style>
 </head>
 <body>
-  <h1>🟢 Kahoot Bot Spawner</h1>
+  <h1>🟢 Kahoot Bot Spawner (Improved)</h1>
   
   <input type="text" id="pin" placeholder="Enter Kahoot PIN" maxlength="6">
-  <input type="number" id="count" placeholder="Number of bots" value="10" min="1" max="100">
+  <input type="number" id="count" placeholder="Number of bots" value="5" min="1" max="50">
   <br>
   <button onclick="startBots()">Spawn Bots</button>
-  <button onclick="stopBots()">Stop All</button>
+  <button onclick="stopBots()">Stop All Bots</button>
 
   <div id="log"></div>
 
@@ -60,64 +60,91 @@
     }
 
     function generateName() {
-      const prefixes = ["Bot", "Player", "Noob", "Pro", "Kahoot"];
-      return prefixes[Math.floor(Math.random()*prefixes.length)] + 
-             Math.floor(Math.random()*9999);
+      const names = ["Bot", "Player", "Noob", "KahootKing", "xXBot", "Random", "Guest"];
+      return names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 9999);
+    }
+
+    async function getSessionToken(pin) {
+      try {
+        const res = await fetch(`https://kahoot.it/reserve/session/${pin}/?${Date.now()}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        return data.token || null;
+      } catch (e) {
+        return null;
+      }
     }
 
     function createBot(pin, id) {
       const name = generateName();
-      const ws = new WebSocket("wss://kahoot.it/cometd");
+      
+      getSessionToken(pin).then(token => {
+        if (!token) {
+          log(`<span style="color:red">[Bot ${id}] Failed to get session token</span>`);
+          return;
+        }
 
-      ws.onopen = () => {
-        log(`<span class="bot">[Bot ${id}]</span> Connected as <b>${name}</b>`);
-        
-        // Initial join
-        ws.send(JSON.stringify({
-          "channel": "/meta/handshake",
-          "version": "1.0",
-          "supportedConnectionTypes": ["websocket"],
-          "id": "1"
-        }));
-      };
+        const ws = new WebSocket(`wss://kahoot.it/cometd/${pin}/${token}`);
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data[0] && data[0].channel === "/meta/handshake") {
-            // Join the game
-            ws.send(JSON.stringify({
-              "channel": "/service/controller",
-              "data": {
-                "type": "join",
-                "pin": pin,
-                "name": name
-              }
-            }));
-          }
-        } catch(e) {}
-      };
+        ws.onopen = () => {
+          log(`<span style="color:cyan">[Bot ${id}]</span> Connected as <b>${name}</b>`);
+          
+          // Handshake
+          ws.send(JSON.stringify([{
+            "channel": "/meta/handshake",
+            "version": "1.0",
+            "supportedConnectionTypes": ["websocket"],
+            "id": "1"
+          }]));
+        };
 
-      ws.onerror = () => log(`<span class="bot">[Bot ${id}]</span> Connection error`);
-      ws.onclose = () => log(`<span class="bot">[Bot ${id}]</span> Disconnected`);
+        ws.onmessage = (event) => {
+          try {
+            const messages = JSON.parse(event.data);
+            if (Array.isArray(messages)) {
+              messages.forEach(msg => {
+                if (msg.channel === "/meta/handshake" && msg.successful) {
+                  // Join game
+                  ws.send(JSON.stringify([{
+                    "channel": "/service/controller",
+                    "data": {
+                      "type": "join",
+                      "pin": pin,
+                      "name": name
+                    },
+                    "id": "2"
+                  }]));
+                }
+              });
+            }
+          } catch(e) {}
+        };
 
-      return ws;
+        ws.onerror = () => log(`<span style="color:red">[Bot ${id}] Connection error</span>`);
+        ws.onclose = () => log(`<span style="color:orange">[Bot ${id}] Disconnected</span>`);
+
+        return ws;
+      });
     }
 
     function startBots() {
       if (running) return;
       
       const pin = document.getElementById('pin').value.trim();
-      const count = parseInt(document.getElementById('count').value);
+      let count = parseInt(document.getElementById('count').value);
 
-      if (!pin || pin.length < 5) {
-        alert("Please enter a valid PIN!");
+      if (!pin || pin.length !== 6) {
+        alert("Please enter a valid 6-digit PIN!");
         return;
       }
 
       running = true;
       bots = [];
-      document.getElementById('log').innerHTML = `Starting ${count} bots for PIN: ${pin}...\n\n`;
+      document.getElementById('log').innerHTML = `Spawning ${count} bots for PIN: ${pin}...\n\n`;
+
+      count = Math.min(count, 30); // Limit to reduce detection
 
       for (let i = 0; i < count; i++) {
         setTimeout(() => {
@@ -125,19 +152,17 @@
             const bot = createBot(pin, i + 1);
             bots.push(bot);
           }
-        }, i * 400); // Delay to avoid instant detection
+        }, i * 600); // Increased delay
       }
     }
 
     function stopBots() {
       running = false;
       bots.forEach(bot => {
-        if (bot && bot.readyState === WebSocket.OPEN) {
-          bot.close();
-        }
+        if (bot && bot.close) bot.close();
       });
       bots = [];
-      log("All bots stopped.");
+      log("🛑 All bots stopped.");
     }
   </script>
 </body>
