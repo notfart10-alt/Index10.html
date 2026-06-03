@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kahoot Bot Spawner</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1e1e2f;
+      color: #0f0;
+      text-align: center;
+      padding: 20px;
+    }
+    input, button {
+      padding: 12px;
+      margin: 10px;
+      font-size: 16px;
+      border-radius: 8px;
+    }
+    button {
+      background: #00ff00;
+      color: black;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover { background: #00cc00; }
+    #log {
+      margin-top: 20px;
+      text-align: left;
+      max-height: 400px;
+      overflow-y: auto;
+      background: #111;
+      padding: 15px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+    }
+    .bot { color: #00ffcc; }
+  </style>
+</head>
+<body>
+  <h1>🟢 Kahoot Bot Spawner</h1>
+  
+  <input type="text" id="pin" placeholder="Enter Kahoot PIN" maxlength="6">
+  <input type="number" id="count" placeholder="Number of bots" value="10" min="1" max="100">
+  <br>
+  <button onclick="startBots()">Spawn Bots</button>
+  <button onclick="stopBots()">Stop All</button>
+
+  <div id="log"></div>
+
+  <script>
+    let bots = [];
+    let running = false;
+
+    function log(message) {
+      const logDiv = document.getElementById('log');
+      logDiv.innerHTML += message + '\n';
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function generateName() {
+      const prefixes = ["Bot", "Player", "Noob", "Pro", "Kahoot"];
+      return prefixes[Math.floor(Math.random()*prefixes.length)] + 
+             Math.floor(Math.random()*9999);
+    }
+
+    function createBot(pin, id) {
+      const name = generateName();
+      const ws = new WebSocket("wss://kahoot.it/cometd");
+
+      ws.onopen = () => {
+        log(`<span class="bot">[Bot ${id}]</span> Connected as <b>${name}</b>`);
+        
+        // Initial join
+        ws.send(JSON.stringify({
+          "channel": "/meta/handshake",
+          "version": "1.0",
+          "supportedConnectionTypes": ["websocket"],
+          "id": "1"
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data[0] && data[0].channel === "/meta/handshake") {
+            // Join the game
+            ws.send(JSON.stringify({
+              "channel": "/service/controller",
+              "data": {
+                "type": "join",
+                "pin": pin,
+                "name": name
+              }
+            }));
+          }
+        } catch(e) {}
+      };
+
+      ws.onerror = () => log(`<span class="bot">[Bot ${id}]</span> Connection error`);
+      ws.onclose = () => log(`<span class="bot">[Bot ${id}]</span> Disconnected`);
+
+      return ws;
+    }
+
+    function startBots() {
+      if (running) return;
+      
+      const pin = document.getElementById('pin').value.trim();
+      const count = parseInt(document.getElementById('count').value);
+
+      if (!pin || pin.length < 5) {
+        alert("Please enter a valid PIN!");
+        return;
+      }
+
+      running = true;
+      bots = [];
+      document.getElementById('log').innerHTML = `Starting ${count} bots for PIN: ${pin}...\n\n`;
+
+      for (let i = 0; i < count; i++) {
+        setTimeout(() => {
+          if (running) {
+            const bot = createBot(pin, i + 1);
+            bots.push(bot);
+          }
+        }, i * 400); // Delay to avoid instant detection
+      }
+    }
+
+    function stopBots() {
+      running = false;
+      bots.forEach(bot => {
+        if (bot && bot.readyState === WebSocket.OPEN) {
+          bot.close();
+        }
+      });
+      bots = [];
+      log("All bots stopped.");
+    }
+  </script>
+</body>
+</html>
